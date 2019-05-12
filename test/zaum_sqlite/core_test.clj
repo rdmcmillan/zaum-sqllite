@@ -10,10 +10,61 @@
     {:created-at 2 :updated-at 2 :text "bar" :other-val 5}
     {:created-at 3 :updated-at 3 :text "baz" :other-val 6}]})
 
-(deftest test-get-all
+(def test-con
+  {:class-name "org.sqlite.JDBC"
+   :subprotocol "sqlite"
+   :subname "test.db"
+   :dbtype :sqlite})
+
+(def test-ddl [[:thing1 "int" :primary :key]])
+
+;; TODO fixture to rm test db after
+
+(deftest test-database-level-operations
+  (testing "Create a table..."
+    (let [result (z/perform-op
+                   :create
+                   {:operation   :create
+                    :connection  (z/init-connection test-con)
+                    :level       :table
+                    :entity      :test
+                    :column-ddl  test-ddl})]
+      (is (= (:status result) :ok))))
+  (testing "Create catch for duplicate table creation attempt..."
+    (let [result (z/perform-op
+                   :create
+                   {:operation   :create
+                    :connection  (z/init-connection test-con)
+                    :level       :table
+                    :entity      :test
+                    :column-ddl  test-ddl})]
+      (is (= (:status result) :error))
+      (is (= (:cause (Throwable->map (:data result))) "Attempt to create duplicate table.")))))
+
+#_(deftest test-create-table
+  (testing "Basic test for creating a sqlite table"
+    (let [con (new-sqlite {:class-name  "org.sqlite.JDBC"
+                              :subprotocol "sqlite"
+                              :db          "test.db"})
+          ent :test-table-created
+          create (z/process-command {:operation  :create
+                                     :connection @(:connection con)
+                                     :level      :table
+                                     :entity     ent})
+          read (z/process-command {:operation :read
+                                   :connection con
+                                   :entity ent})]
+      (is (= :ok (:status create)))
+      (is (= 1 (:count create)))
+      (is (= (:count create) (count (:data create))))
+      (is (= "Table :table-0 created." (:message create)))
+      (is (= :ok (:status read)))
+      (is (zero? (:count read))))))
+
+#_(deftest test-get-all
   (testing "Basic test of getting all records in a table"
-    (let [result (z/perform-op :get
-                               {:operation  :get
+    (let [result (z/process-command
+                               {:operation  :read
                                 ;;TODO: how do our connection strings work?
                                 :connection {:dbtype "sqlite"
                                              :dbname "test.db"
@@ -24,7 +75,7 @@
       (is (= :ok (:status result)))
       (is (= (:count result) (count (:data result)))))))
 
-(deftest test-get-by-identifier
+#_(deftest test-get-by-identifier
   (testing "Test getting one entry by an identifier one key"
     (let [result (z/perform-op :get
                                {:operation  :get
@@ -66,7 +117,7 @@
       (is (= (:count result)) (count (:data result)))
       (is (zero? (:count result))))))
 
-(deftest test-greater-than
+#_(deftest test-greater-than
   (testing "test basic > performance in memory"
     (let [result (z/perform-op :get
                                {:operation  :get

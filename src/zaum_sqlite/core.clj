@@ -21,16 +21,42 @@
                     (= (filter-key v) filter-search)))))
      identifier)))
 
+(defn db-tables
+  [connection]
+  (vec
+    (map #(:tbl_name %)
+        (jdbc/query connection ["select * from sqlite_master where type='table'"])))) ;; TODO use zaum query
+
+(defn in-db-tables?
+  [connection entity]
+  (true? (some #(= (name entity) %) (db-tables connection))))
+
 (defrecord ZaumSQLite [connection]
   z/IZaumDatabase
-  (perform-get [_ {:keys [entity identifier]}]
+  (perform-create [_ {:keys [connection level entity] :as command}]
+    (cond
+      (and (= level :table) (in-db-tables? connection entity))
+           ;;TODO: likely an error condition or should it be idempotent and 'clean'?
+           ;; - we're considering just returning this as an error
+           ;; - not sure if it shouldn't be idempotent - we'll know more later
+           (throw (Exception. "Attempt to create duplicate table."))
+           (= level :table)
+           ;;TODO: this represents the 'table' - not sure these implementations
+           ;; shouldn't be adapted to assoc and return the command message
+      (do
+        (jdbc/db-do-commands connection
+                             (jdbc/create-table-ddl entity (:column-ddl command)))
+        ;; - for :data we return the empty table [] in a collection of "created" table(s)
+        {:status :ok :data [[]] :message (str "Table " entity " created.")})
+           :or
+           (throw (Exception. "Unknown create operation"))))
+  (perform-read [_ {:keys [entity identifier]}]
     (cond
       (nil? identifier)
       (jdbc/query @connection [(str "SELECT * from " entity)])
       (map? identifier)
       (vec (filter (construct-filter identifier) (@connection entity))))))
 
-;;TODO: this is a stop-gap - eventually we need to use the connection map
-(defn new-sqlite
+(defmethod z/prepare-connection :sqlite
   [connection-map]
-  (ZaumSQLite. (atom connection-map)))
+  (ZaumSQLite. connection-map))
