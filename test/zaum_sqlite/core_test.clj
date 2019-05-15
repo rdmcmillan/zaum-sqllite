@@ -1,7 +1,8 @@
 (ns zaum-sqlite.core-test
   (:require [clojure.test :refer :all]
             [zaum.core :as z]
-            [zaum-sqlite.core :refer :all]))
+            [zaum-sqlite.core :refer :all]
+            [clojure.pprint]))
 
 (def test-data
   {:table-0
@@ -11,12 +12,34 @@
     {:created-at 3 :updated-at 3 :text "baz" :other-val 6}]})
 
 (def test-con
-  {:class-name "org.sqlite.JDBC"
-   :subprotocol "sqlite"
+  {:subprotocol "sqlite"
    :subname "test.db"
    :dbtype :sqlite})
 
-(def test-ddl [[:thing1 "int" :primary :key]])
+(def test-table-one :test-one)
+
+;;TODO hammock time:
+;; 1) ddl as maps
+;; 2) ddl inferred from a col schema(?)
+;; 3) sane migrations, ie as above and complement of roll-up is roll-down, etc.
+(def test-ddl [[:created-at :int]
+               [:updated-at :int]
+               [:text "varchar(10)"]
+               [:other-val :int]])
+
+(deftest test-kebab-to-snake
+  (testing "Change kebab case string to snake case."
+    (is (= "naming_things_is_hard"
+           (kebab-to-snake "naming-things-is-hard"))))
+  (testing "Change kebab case keyword to snake case."
+    (is (= :naming_things_is_hard
+           (kebab-to-snake :naming-things-is-hard))))
+  (testing "Wrong type past to kebab-to-snake"
+    (let [result (try (kebab-to-snake 1)
+                      (catch Throwable t t))]
+      (is (= (:cause (Throwable->map result))
+             "Wrong type: class java.lang.Long passed to kebab-to-snake")))))
+
 
 ;; TODO fixture to rm test db after
 
@@ -27,7 +50,7 @@
                    {:operation   :create
                     :connection  (z/init-connection test-con)
                     :level       :table
-                    :entity      :test
+                    :entity      test-table-one
                     :column-ddl  test-ddl})]
       (is (= (:status result) :ok))))
   (testing "Create catch for duplicate table creation attempt..."
@@ -36,20 +59,28 @@
                    {:operation   :create
                     :connection  (z/init-connection test-con)
                     :level       :table
-                    :entity      :test
+                    :entity      test-table-one
                     :column-ddl  test-ddl})]
       (is (= (:status result) :error))
       (is (= (:cause (Throwable->map (:data result))) "Attempt to create duplicate table.")))))
 
-#_(deftest test-create-table
-  (testing "Basic test for creating a sqlite table"
-    (let [con (new-sqlite {:class-name  "org.sqlite.JDBC"
-                              :subprotocol "sqlite"
-                              :db          "test.db"})
-          ent :test-table-created
+#_(deftest test-select-empty-rows
+  (let [result (z/perform-op
+                 :read
+                 {:operation   :read
+                  :connection  (z/init-connection test-con)
+                  :level       :table
+                  :entity      test-table-one})]
+    (is (= :ok (:status result)))
+    (is (= 0 (:count result)))))
+
+#_ (deftest test-create-rows
+  (testing "Basic test for creating sqlite row data."
+    (let [con (z/init-connection test-con)
+          ent :test-table-data
           create (z/process-command {:operation  :create
-                                     :connection @(:connection con)
-                                     :level      :table
+                                     :connection con
+                                     :level      :row
                                      :entity     ent})
           read (z/process-command {:operation :read
                                    :connection con
