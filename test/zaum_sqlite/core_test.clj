@@ -1,8 +1,7 @@
 (ns zaum-sqlite.core-test
   (:require [clojure.test :refer :all]
             [zaum.core :as z]
-            [zaum-sqlite.core :refer :all]
-            [clojure.pprint]))
+            [zaum-sqlite.core :refer :all]))
 
 (def test-data
   {:table-0
@@ -11,12 +10,14 @@
     {:created-at 2 :updated-at 2 :text "bar" :other-val 5}
     {:created-at 3 :updated-at 3 :text "baz" :other-val 6}]})
 
+(def test-table-zero (-> test-data
+                         keys
+                         first))
+
 (def test-con
   {:subprotocol "sqlite"
    :subname "test.db"
    :dbtype :sqlite})
-
-(def test-table-one :test-one)
 
 ;;TODO hammock time:
 ;; 1) ddl as maps
@@ -50,7 +51,7 @@
                    {:operation   :create
                     :connection  (z/init-connection test-con)
                     :level       :table
-                    :entity      test-table-one
+                    :entity      test-table-zero
                     :column-ddl  test-ddl})]
       (is (= (:status result) :ok))))
   (testing "Create catch for duplicate table creation attempt..."
@@ -59,38 +60,47 @@
                    {:operation   :create
                     :connection  (z/init-connection test-con)
                     :level       :table
-                    :entity      test-table-one
+                    :entity      test-table-zero
                     :column-ddl  test-ddl})]
       (is (= (:status result) :error))
       (is (= (:cause (Throwable->map (:data result))) "Attempt to create duplicate table.")))))
 
-#_(deftest test-select-empty-rows
+(deftest test-select-empty-rows
   (let [result (z/perform-op
                  :read
                  {:operation   :read
                   :connection  (z/init-connection test-con)
                   :level       :table
-                  :entity      test-table-one})]
+                  :entity      test-table-zero})]
     (is (= :ok (:status result)))
-    (is (= 0 (:count result)))))
+    (is (= 0 (:count result)))
+    (is (= [] (:data result)))))
 
-#_ (deftest test-create-rows
+(deftest test-create-single-rows
   (testing "Basic test for creating sqlite row data."
-    (let [con (z/init-connection test-con)
-          ent :test-table-data
-          create (z/process-command {:operation  :create
-                                     :connection con
+    (let [create (z/process-command {:operation  :create
+                                     :connection (z/init-connection test-con)
                                      :level      :row
-                                     :entity     ent})
-          read (z/process-command {:operation :read
-                                   :connection con
-                                   :entity ent})]
+                                     :entity     test-table-zero
+                                     :data       (first (test-table-zero test-data))})
+          read (z/process-command {:operation  :read
+                                   :connection (z/init-connection test-con)
+                                   :entity     test-table-zero})]
       (is (= :ok (:status create)))
       (is (= 1 (:count create)))
       (is (= (:count create) (count (:data create))))
-      (is (= "Table :table-0 created." (:message create)))
+      (is (= "Rows in :table-0 created." (:message create)))
       (is (= :ok (:status read)))
-      (is (zero? (:count read))))))
+      (is (= 1 (:count read))))))
+
+(deftest crud
+  (test-database-level-operations)
+  (test-select-empty-rows)
+  (test-create-single-rows))
+
+(defn test-ns-hook
+  []
+  (crud))
 
 #_(deftest test-get-all
   (testing "Basic test of getting all records in a table"

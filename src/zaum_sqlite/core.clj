@@ -46,7 +46,7 @@
 ;; TODO Thinking we need level dispatch...
 (defrecord ZaumSQLite [connection]
   z/IZaumDatabase
-  (perform-create [_ {:keys [connection level entity] :as command}]
+  (perform-create [_ {:keys [connection level entity data] :as command}]
     (cond
       (and (= level :table) (in-db-tables? connection entity))
       ;;TODO: likely an error condition or should it be idempotent and 'clean'?
@@ -56,21 +56,29 @@
       (= level :table)
       ;;TODO: this represents the 'table' - not sure these implementations
       ;; shouldn't be adapted to assoc and return the command message
-      (do
-        (jdbc/db-do-commands connection
-                             (jdbc/create-table-ddl (kebab-to-snake entity)
-                                                    (:column-ddl command)
-                                                    {:entities kebab-to-snake}))
-        ;; - for :data we return the empty table [] in a collection of "created" table(s)
-        {:status :ok :data [[]] :message (str "Table " entity " created.")})
+      {:status  :ok
+       :data    (jdbc/db-do-commands connection
+                                     (jdbc/create-table-ddl (kebab-to-snake entity)
+                                                            (:column-ddl command)
+                                                            {:entities kebab-to-snake}))
+       :message (str "Table " entity " created.")}
+      (= level :row)
+      {:status :ok
+       :data  (jdbc/insert! connection
+                            (kebab-to-snake entity)
+                            data
+                            {:entities kebab-to-snake})
+               :message (str "Rows in " entity " created.")}
       :or
-      (throw (Exception. "Unknown create operation"))))
+      (throw (Exception. "Unknown create operation")))
+    )
   (perform-read [_ {:keys [entity identifier]}]
-    (cond
-      (nil? identifier)
-      (jdbc/query connection [(str "SELECT * from " (name (kebab-to-snake entity)))])
-      (map? identifier)
-      (vec (filter (construct-filter identifier) (connection entity))))))
+    (let [result (vec
+                   (jdbc/query connection
+                               [(str "SELECT * from " (name (kebab-to-snake entity)))]))]
+      {:status  :ok
+       :data    result
+       :message "read-value"})))
 
 (defmethod z/prepare-connection :sqlite
   [connection-map]
