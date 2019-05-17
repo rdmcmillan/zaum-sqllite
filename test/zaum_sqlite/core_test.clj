@@ -1,7 +1,8 @@
 (ns zaum-sqlite.core-test
   (:require [clojure.test :refer :all]
             [zaum.core :as z]
-            [zaum-sqlite.core :refer :all]))
+            [zaum-sqlite.core :refer :all]
+            [clojure.pprint]))
 
 (def test-data
   {:table-0
@@ -41,6 +42,18 @@
       (is (= (:cause (Throwable->map result))
              "Wrong type: class java.lang.Long passed to kebab-to-snake")))))
 
+(deftest test-snake-to-kebab
+  (testing "Change snake case string to kebab case."
+    (is (= "naming-things-is-hard"
+           (snake-to-kebab "naming_things_is_hard"))))
+  (testing "Change snake case keyword to kebab case."
+    (is (= :naming-things-is-hard
+           (snake-to-kebab :naming_things_is_hard))))
+  (testing "Wrong type past to snake-to-kebab"
+    (let [result (try (snake-to-kebab 1)
+                      (catch Throwable t t))]
+      (is (= (:cause (Throwable->map result))
+             "Wrong type: class java.lang.Long passed to snake-to-kebab")))))
 
 ;; TODO fixture to rm test db after
 
@@ -89,32 +102,53 @@
       (is (= :ok (:status create)))
       (is (= 1 (:count create)))
       (is (= (:count create) (count (:data create))))
+      (is (= (str "Row in " test-table-zero " created.") (:message create)))
+      (is (= :ok (:status read)))
+      (is (= 1 (:count read)))
+      (is (= 0 (get-in read [:data 0 :created-at])))
+      (is (= 1 (get-in read [:data 0 :updated-at])))
+      (is (= "foo" (get-in read [:data 0 :text])))
+      (is (= 4 (get-in read [:data 0 :other-val]))))))
+
+#_(deftest test-create-multiple-rows
+  (testing "Basic test for creating sqlite row data."
+    (let [create (z/process-command {:operation  :create
+                                     :connection (z/init-connection test-con)
+                                     :level      :row
+                                     :entity     test-table-zero
+                                     :data       (rest (test-table-zero test-data))})
+          read (z/process-command {:operation  :read
+                                   :connection (z/init-connection test-con)
+                                   :entity     test-table-zero})]
+      (is (= 1 create))
+      (is (= :ok (:status create)))
+      (is (= 1 (:count create)))
+      (is (= (:count create) (count (:data create))))
       (is (= "Rows in :table-0 created." (:message create)))
       (is (= :ok (:status read)))
       (is (= 1 (:count read))))))
 
-(deftest crud
-  (test-database-level-operations)
-  (test-select-empty-rows)
-  (test-create-single-rows))
-
-(defn test-ns-hook
-  []
-  (crud))
-
 #_(deftest test-get-all
   (testing "Basic test of getting all records in a table"
     (let [result (z/process-command
-                               {:operation  :read
-                                ;;TODO: how do our connection strings work?
-                                :connection {:dbtype "sqlite"
-                                             :dbname "test.db"
-                                             :impl
-                                             (new-sqlite {:dbtype "sqlite"
-                                                          :dbname "test.db"})}
-                                :entity     "test"})]
+                   {:operation  :read
+                    :connection (z/init-connection test-con)
+                    :entity     test-table-zero})]
       (is (= :ok (:status result)))
       (is (= (:count result) (count (:data result)))))))
+
+(deftest crud
+  (test-database-level-operations)
+  (test-select-empty-rows)
+  (test-create-single-rows)
+  #_(test-create-multiple-rows)
+  #_(test-get-all))
+
+(defn test-ns-hook
+  []
+  (test-kebab-to-snake)
+  (test-snake-to-kebab)
+  (crud))
 
 #_(deftest test-get-by-identifier
   (testing "Test getting one entry by an identifier one key"
