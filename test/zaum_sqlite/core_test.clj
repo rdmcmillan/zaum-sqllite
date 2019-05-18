@@ -1,8 +1,7 @@
 (ns zaum-sqlite.core-test
   (:require [clojure.test :refer :all]
             [zaum.core :as z]
-            [zaum-sqlite.core :refer :all]
-            [clojure.pprint]))
+            [zaum-sqlite.core :refer :all]))
 
 (def test-data
   {:table-0
@@ -91,11 +90,12 @@
 
 (deftest test-create-single-rows
   (testing "Basic test for creating sqlite row data."
-    (let [create (z/process-command {:operation  :create
+    (let [data-row (first (test-table-zero test-data))
+          create (z/process-command {:operation  :create
                                      :connection (z/init-connection test-con)
                                      :level      :row
                                      :entity     test-table-zero
-                                     :data       (first (test-table-zero test-data))})
+                                     :data       data-row})
           read (z/process-command {:operation  :read
                                    :connection (z/init-connection test-con)
                                    :entity     test-table-zero})]
@@ -110,25 +110,24 @@
       (is (= "foo" (get-in read [:data 0 :text])))
       (is (= 4 (get-in read [:data 0 :other-val]))))))
 
-#_(deftest test-create-multiple-rows
+(deftest test-create-multiple-rows
   (testing "Basic test for creating sqlite row data."
-    (let [create (z/process-command {:operation  :create
+    (let [data-rows (vec (rest (test-table-zero test-data)))
+          create (z/process-command {:operation  :create
                                      :connection (z/init-connection test-con)
                                      :level      :row
                                      :entity     test-table-zero
-                                     :data       (rest (test-table-zero test-data))})
+                                     :data       data-rows})
           read (z/process-command {:operation  :read
                                    :connection (z/init-connection test-con)
                                    :entity     test-table-zero})]
-      (is (= 1 create))
       (is (= :ok (:status create)))
-      (is (= 1 (:count create)))
-      (is (= (:count create) (count (:data create))))
-      (is (= "Rows in :table-0 created." (:message create)))
+      (is (= (count data-rows) (:count create)))
+      (is (= "Row in :table-0 created." (:message create)))
       (is (= :ok (:status read)))
-      (is (= 1 (:count read))))))
+      (is (= (count (test-table-zero test-data)) (:count read))))))
 
-#_(deftest test-get-all
+(deftest test-get-all
   (testing "Basic test of getting all records in a table"
     (let [result (z/process-command
                    {:operation  :read
@@ -141,8 +140,8 @@
   (test-database-level-operations)
   (test-select-empty-rows)
   (test-create-single-rows)
-  #_(test-create-multiple-rows)
-  #_(test-get-all))
+  (test-create-multiple-rows)
+  (test-get-all))
 
 (defn test-ns-hook
   []

@@ -69,12 +69,12 @@
 
 (defn create-table-data
   [connection entity data]
-  (let [create-result (if (= 1 (count data))
+  (let [create-result (if (map? data)
                         (create-row connection entity data)
-                        (create-row connection entity data))] ;; TODO catch 0
+                        (create-rows connection entity data))] ;; TODO catch 0
     {:status :ok
      :data create-result
-     :message (str "Row in " entity " created.")}))
+     :message (str "Row in " entity " created.")}))         ;;TODO number of rows inserted
 
 ;; TODO Thinking we need level dispatch...
 ;; ...and row count?
